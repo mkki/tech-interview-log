@@ -1083,3 +1083,64 @@ function useTimer({ initialTime = 0, onExpire, autoStart = false } = {}) {
 외부에서 상태를 직접 조작하지 않고 `start`, `stop`, `reset` 같은 **행위 단위 메서드**만 노출하는 것이 캡슐화 측면에서 좋습니다.
 
 </details>
+
+### Q37. `shallowEqual`이란 무엇이며, React 생태계에서 어떤 상황에 활용되나요? `Object.is` 기반의 기본 비교와 어떤 차이가 있나요?
+
+* 의도: React의 렌더링 최적화 전반에 걸쳐 사용되는 얕은 동등 비교의 원리를 이해하고, 기본 참조 비교와의 차이 및 적절한 활용 상황을 아는지 평가
+* 키워드: `1단계 프로퍼티 비교` `Object.is` `React.memo 기본 비교` `useSelector(react-redux)` `deep equal과의 차이`
+
+<details>
+<summary>답변</summary>
+
+**shallowEqual이란**:
+두 객체의 **1단계(top-level) 프로퍼티들을 `Object.is`로 하나씩 비교**하는 함수입니다. 중첩 객체의 내부까지 재귀 비교하는 deep equal과 달리, 최상위 키-값 쌍만 확인합니다.
+
+```javascript
+// shallowEqual 구현 원리
+function shallowEqual(objA, objB) {
+  if (Object.is(objA, objB)) return true;
+  if (typeof objA !== 'object' || typeof objB !== 'object') return false;
+
+  const keysA = Object.keys(objA);
+  const keysB = Object.keys(objB);
+
+  if (keysA.length !== keysB.length) return false;
+
+  return keysA.every(key => Object.is(objA[key], objB[key]));
+}
+```
+
+**`Object.is`(기본 참조 비교)와의 차이**:
+
+| 비교 방식 | 동작 | 결과 |
+|---|---|---|
+| `Object.is(a, b)` | 참조 주소가 같은지만 확인 | `{ x: 1 } === { x: 1 }` → `false` |
+| `shallowEqual(a, b)` | 1단계 프로퍼티를 순회하며 비교 | `{ x: 1 }` vs `{ x: 1 }` → `true` |
+
+**React 생태계에서의 활용**:
+
+1. **`React.memo` 기본 비교**: `React.memo`가 props를 비교할 때 내부적으로 각 prop에 대해 `Object.is`를 수행하는데, 이 동작이 실질적으로 shallowEqual과 동일합니다. props 최상위 값들이 같으면 리렌더링을 건너뜁니다.
+
+2. **`useSelector` (react-redux)**: 두 번째 인자로 `shallowEqual`을 넘기면, selector가 객체를 반환할 때 참조가 바뀌어도 내용이 같으면 리렌더링을 방지합니다.
+```javascript
+import { shallowEqual, useSelector } from 'react-redux';
+
+// 참조가 매번 새로 생성돼도 내용이 같으면 리렌더링 안 함
+const { name, age } = useSelector(
+  state => ({ name: state.user.name, age: state.user.age }),
+  shallowEqual
+);
+```
+
+3. **`React.memo` 커스텀 비교 함수**: Q21처럼 두 번째 인자로 shallowEqual을 직접 넘겨 1단계 비교를 명시적으로 적용할 수 있습니다.
+
+**한계 - 중첩 객체**:
+```javascript
+shallowEqual(
+  { user: { name: 'Alice' } },
+  { user: { name: 'Alice' } }
+); // false → user 프로퍼티의 참조가 달라서
+```
+중첩 객체는 1단계에서 참조를 비교하므로 내용이 같아도 `false`를 반환합니다. 이 경우 deep equal이 필요하지만, 비용이 크므로 구조를 평탄화하거나 `useMemo`로 참조를 안정화하는 것이 일반적입니다.
+
+</details>
